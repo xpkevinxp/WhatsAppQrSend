@@ -1,44 +1,58 @@
-# WhatsApp Multi-Session Bot API 🚀
+# WhatsApp Multi-Session Bot API con Anti-Ban 🚀
 
-Este bot permite gestionar **múltiples cuentas de WhatsApp** simultáneamente desde una sola instancia de Node.js.
+Este bot profesional permite gestionar **múltiples cuentas de WhatsApp** simultáneamente con una arquitectura robusta diseñada para evitar bloqueos y baneos.
 
-## Características Multi-Sesión
+## Características Principales
 
-- ✅ **Gestión de Sesiones**: Crea, lista y elimina sesiones mediante identificadores únicos (`sessionId`).
-- ✅ **Aislamiento de Datos**: Cada sesión guarda su propia autenticación de forma independiente.
-- ✅ **Persistencia**: Al reiniciar el servidor con PM2, el bot restaura automáticamente todas las sesiones previamente vinculadas.
-- ✅ **QR Dinámico**: Acceso individual al QR de cada cuenta.
+- ✅ **Multi-Sesión**: Crea y gestiona múltiples cuentas independientes (`sessionId`).
+- ✅ **Estrategia Anti-Ban Pro**:
+  - **Cola de Mensajes (FIFO)**: Los envíos masivos se procesan secuencialmente.
+  - **Simulación de Escritura**: Activa el estado "Escribiendo..." antes de cada envío.
+  - **Retrasos Aleatorios**: Intervalos humanos entre mensajes (5-15 segundos) para evitar patrones robóticos.
+- ✅ **Persistencia Total**: Las sesiones se restauran automáticamente al reiniciar el servidor.
+- ✅ **Optimizado para Linux**: Configuración lista para servidores (Chromium headless + PM2).
 
-## Instalación y Uso en Linux
+## Instalación en Linux
 
-1. **Instalar dependencias**: `npm install`
-2. **Instalar Chromium**: `apt-get install chromium-browser` (ver README anterior para dependencias de sistema).
-3. **Iniciar con PM2**: `pm2 start src/index.js --name "whatsapp-multi"`
+1. **Dependencias de Node**: `npm install`
+2. **Navegador y Librerías de Sistema**:
+   ```bash
+   apt-get update && apt-get install -y chromium-browser libnss3 libatk-bridge2.0-0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libasound2 libpangocairo-1.0-0 libxshmfence1 libx11-xcb1
+   ```
+3. **Configurar PM2 para Autoinicio**:
+   ```bash
+   npm install -g pm2
+   pm2 start src/index.js --name "whatsapp-bot"
+   pm2 startup  # Sigue las instrucciones que imprima este comando
+   pm2 save
+   ```
 
-## Endpoints de la API
+## Referencia de la API
 
-### 1. Crear / Inicializar Sesión
-- **URL**: `/create-session/:sessionId`
-- **Ejemplo**: `/create-session/ventas-01`
-- **Descripción**: Prepara el motor para una nueva cuenta.
+### 1. Gestión de Sesiones
+- **Crear Sesión**: `GET /create-session/:sessionId` (Prepara el motor para una cuenta).
+- **Ver QR**: `GET /qr/:sessionId` (Escanea para vincular).
+- **Listar Estados**: `GET /sessions` (Muestra cuentas activas y longitud de colas).
+- **Eliminar Sesión**: `DELETE /session/:sessionId` (Cierra y borra datos).
 
-### 2. Obtener QR
-- **URL**: `/qr/:sessionId`
-- **Descripción**: Abre este link en tu navegador para vincular la cuenta específica.
+### 2. Enviar Mensajes (Con Anti-Ban)
+- **Endpoint**: `POST /send-message/:sessionId`
+- **Cuerpo (JSON)**:
+  ```json
+  {
+    "to": "34600000000",
+    "message": "Hola, este mensaje pasará por la cola de seguridad."
+  }
+  ```
+- **Funcionamiento**: El mensaje se encola. El bot simulará que escribe por unos segundos y luego lo enviará, esperando un tiempo prudencial antes de pasar al siguiente mensaje de la cola.
 
-### 3. Enviar Mensaje
-- **URL**: `/send-message/:sessionId`
-- **Método**: `POST`
-- **Body**: `{"to": "34600000000", "message": "Hola desde sesión específica"}`
+## Monitoreo
+Para ver qué está haciendo el bot en tiempo real (especialmente los logs de envío y el QR en consola):
+```bash
+pm2 logs whatsapp-bot
+```
 
-### 4. Listar Estados
-- **URL**: `/sessions`
-- **Descripción**: Devuelve un JSON con el estado (`isReady`, `hasQr`) de todas las sesiones activas.
-
-### 5. Eliminar Sesión
-- **URL**: `/session/:sessionId`
-- **Método**: `DELETE`
-- **Descripción**: Cierra la sesión, destruye el cliente y elimina los datos locales.
-
-## Estructura de Persistencia
-Los datos se guardan en `.wwebjs_auth/session-ID`. **No borres esta carpeta** si quieres mantener las sesiones activas tras un reinicio.
+## Estructura de Datos
+- `.wwebjs_auth/`: Contiene las sesiones persistentes.
+- `src/whatsapp.js`: Motor de WhatsApp y lógica de colas.
+- `src/routes.js`: Definición de la API REST.
