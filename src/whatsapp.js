@@ -1,5 +1,5 @@
 import pkg from 'whatsapp-web.js';
-const { Client, LocalAuth } = pkg;
+const { Client, LocalAuth, MessageMedia } = pkg;
 import qrcodeTerminal from 'qrcode-terminal';
 import qrcode from 'qrcode';
 import fs from 'fs';
@@ -86,7 +86,7 @@ class WhatsappClient {
     /**
      * Encola un mensaje para ser enviado
      */
-    async enqueueMessage(to, message) {
+    async enqueueMessage(to, message, pdfBase64 = null, caption = null) {
         if (!this.isReady) {
             throw new Error('El cliente no está listo. Escanea el QR primero.');
         }
@@ -94,8 +94,8 @@ class WhatsappClient {
         const formattedNumber = to.includes('@c.us') ? to : `${to.replace(/\D/g, '')}@c.us`;
         
         return new Promise((resolve, reject) => {
-            this.messageQueue.push({ to: formattedNumber, message, resolve, reject });
-            console.log(`[${this.sessionId}] Mensaje encolado para ${formattedNumber}. Cola: ${this.messageQueue.length}`);
+            this.messageQueue.push({ to: formattedNumber, message, pdfBase64, caption, resolve, reject });
+            console.log(`[${this.sessionId}] Mensaje/Media encolado para ${formattedNumber}. Cola: ${this.messageQueue.length}`);
             this.processQueue();
         });
     }
@@ -109,7 +109,7 @@ class WhatsappClient {
         this.isProcessingQueue = true;
 
         while (this.messageQueue.length > 0) {
-            const { to, message, resolve, reject } = this.messageQueue.shift();
+            const { to, message, pdfBase64, caption, resolve, reject } = this.messageQueue.shift();
 
             try {
                 // 1. Simular "Escribiendo..." para parecer humano
@@ -120,10 +120,16 @@ class WhatsappClient {
                 const typingDelay = Math.floor(Math.random() * (4000 - 2000 + 1)) + 2000;
                 await new Promise(r => setTimeout(r, typingDelay));
 
-                // 3. Enviar el mensaje
-                const response = await this.client.sendMessage(to, message);
-                console.log(`[${this.sessionId}] Mensaje enviado a ${to}`);
+                // 3. Enviar el mensaje o media
+                let response;
+                if (pdfBase64) {
+                    const media = new MessageMedia('application/pdf', pdfBase64, 'document.pdf');
+                    response = await this.client.sendMessage(to, media, { caption: caption || message });
+                } else {
+                    response = await this.client.sendMessage(to, message);
+                }
                 
+                console.log(`[${this.sessionId}] Enviado a ${to}`);
                 resolve(response);
 
                 // 4. Retraso de seguridad entre mensajes (Anti-Ban)

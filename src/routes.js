@@ -53,27 +53,31 @@ router.get('/qr/:sessionId', async (req, res) => {
  */
 router.post('/send-message/:sessionId', async (req, res) => {
     const { sessionId } = req.params;
-    const { to, message } = req.body;
+    const { to, message, pdfBase64, caption } = req.body;
     const session = sessionManager.getSession(sessionId);
 
     if (!session) {
         return res.status(404).json({ success: false, error: 'Sesión no encontrada.' });
     }
 
-    if (!to || !message) {
-        return res.status(400).json({ success: false, error: 'Faltan parámetros: to y message.' });
+    if (!to || (!message && !pdfBase64)) {
+        return res.status(400).json({ 
+            success: false, 
+            error: 'Faltan parámetros: se requiere "to" y al menos "message" o "pdfBase64".' 
+        });
     }
 
     try {
-        // Ahora usamos enqueueMessage en lugar de sendMessage directo
-        session.enqueueMessage(to, message); 
+        // Ahora pasamos también pdfBase64 y caption
+        session.enqueueMessage(to, message, pdfBase64, caption); 
         
         res.json({ 
             success: true, 
-            message: 'Mensaje encolado para envío (Anti-Ban activo).',
+            message: pdfBase64 ? 'Archivo PDF encolado para envío.' : 'Mensaje encolado para envío.',
             data: { 
                 to,
                 sessionId,
+                hasMedia: !!pdfBase64,
                 queuePosition: session.getStatus().queueLength 
             }
         });

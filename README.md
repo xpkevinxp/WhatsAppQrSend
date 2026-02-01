@@ -35,16 +35,25 @@ Este bot profesional permite gestionar **múltiples cuentas de WhatsApp** simult
 - **Listar Estados**: `GET /sessions` (Muestra cuentas activas y longitud de colas).
 - **Eliminar Sesión**: `DELETE /session/:sessionId` (Cierra y borra datos).
 
-### 2. Enviar Mensajes (Con Anti-Ban)
+### 2. Enviar Mensajes o PDFs (Con Anti-Ban)
 - **Endpoint**: `POST /send-message/:sessionId`
-- **Cuerpo (JSON)**:
+- **Cuerpo (JSON) para texto**:
   ```json
   {
     "to": "34600000000",
     "message": "Hola, este mensaje pasará por la cola de seguridad."
   }
   ```
-- **Funcionamiento**: El mensaje se encola. El bot simulará que escribe por unos segundos y luego lo enviará, esperando un tiempo prudencial antes de pasar al siguiente mensaje de la cola.
+- **Cuerpo (JSON) para PDF**:
+  ```json
+  {
+    "to": "34600000000",
+    "pdfBase64": "JVBERi0xLjQKJ... (cadena base64 del PDF)",
+    "caption": "Aquí tienes el documento solicitado",
+    "message": "Texto alternativo si no hay caption"
+  }
+  ```
+- **Funcionamiento**: El mensaje o archivo se encola. El bot simulará que escribe por unos segundos y luego lo enviará, esperando un tiempo prudencial antes de pasar al siguiente elemento de la cola.
 
 ## Monitoreo
 Para ver qué está haciendo el bot en tiempo real (especialmente los logs de envío y el QR en consola):
