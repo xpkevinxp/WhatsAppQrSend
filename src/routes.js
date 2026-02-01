@@ -65,11 +65,17 @@ router.post('/send-message/:sessionId', async (req, res) => {
     }
 
     try {
-        const response = await session.sendMessage(to, message);
+        // Ahora usamos enqueueMessage en lugar de sendMessage directo
+        session.enqueueMessage(to, message); 
+        
         res.json({ 
             success: true, 
-            message: 'Mensaje enviado.',
-            data: { id: response.id.id, sessionId }
+            message: 'Mensaje encolado para envío (Anti-Ban activo).',
+            data: { 
+                to,
+                sessionId,
+                queuePosition: session.getStatus().queueLength 
+            }
         });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });

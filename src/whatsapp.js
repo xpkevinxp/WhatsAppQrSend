@@ -30,6 +30,10 @@ class WhatsappClient {
 
         this.qrCode = null;
         this.isReady = false;
+        
+        // Cola de mensajes
+        this.messageQueue = [];
+        this.isProcessingQueue = false;
 
         this.initializeEvents();
     }
@@ -79,18 +83,63 @@ class WhatsappClient {
         return await qrcode.toDataURL(this.qrCode);
     }
 
-    async sendMessage(to, message) {
+    /**
+     * Encola un mensaje para ser enviado
+     */
+    async enqueueMessage(to, message) {
         if (!this.isReady) {
             throw new Error('El cliente no está listo. Escanea el QR primero.');
         }
 
-        try {
-            const formattedNumber = to.includes('@c.us') ? to : `${to.replace(/\D/g, '')}@c.us`;
-            return await this.client.sendMessage(formattedNumber, message);
-        } catch (error) {
-            console.error(`[${this.sessionId}] Error al enviar mensaje:`, error);
-            throw error;
+        const formattedNumber = to.includes('@c.us') ? to : `${to.replace(/\D/g, '')}@c.us`;
+        
+        return new Promise((resolve, reject) => {
+            this.messageQueue.push({ to: formattedNumber, message, resolve, reject });
+            console.log(`[${this.sessionId}] Mensaje encolado para ${formattedNumber}. Cola: ${this.messageQueue.length}`);
+            this.processQueue();
+        });
+    }
+
+    /**
+     * Procesa la cola de mensajes con retrasos aleatorios
+     */
+    async processQueue() {
+        if (this.isProcessingQueue || this.messageQueue.length === 0) return;
+
+        this.isProcessingQueue = true;
+
+        while (this.messageQueue.length > 0) {
+            const { to, message, resolve, reject } = this.messageQueue.shift();
+
+            try {
+                // 1. Simular "Escribiendo..." para parecer humano
+                const chat = await this.client.getChatById(to);
+                await chat.sendStateTyping();
+
+                // 2. Retraso aleatorio corto antes de enviar (2-4 segundos) mientras "escribe"
+                const typingDelay = Math.floor(Math.random() * (4000 - 2000 + 1)) + 2000;
+                await new Promise(r => setTimeout(r, typingDelay));
+
+                // 3. Enviar el mensaje
+                const response = await this.client.sendMessage(to, message);
+                console.log(`[${this.sessionId}] Mensaje enviado a ${to}`);
+                
+                resolve(response);
+
+                // 4. Retraso de seguridad entre mensajes (Anti-Ban)
+                // Retraso aleatorio entre 5 y 15 segundos
+                if (this.messageQueue.length > 0) {
+                    const nextDelay = Math.floor(Math.random() * (15000 - 5000 + 1)) + 5000;
+                    console.log(`[${this.sessionId}] Esperando ${nextDelay/1000}s para el siguiente mensaje...`);
+                    await new Promise(r => setTimeout(r, nextDelay));
+                }
+            } catch (error) {
+                console.error(`[${this.sessionId}] Error al procesar mensaje de la cola:`, error);
+                reject(error);
+            }
         }
+
+        this.isProcessingQueue = false;
     }
 
     initialize() {
@@ -101,7 +150,8 @@ class WhatsappClient {
         return {
             sessionId: this.sessionId,
             isReady: this.isReady,
-            hasQr: !!this.qrCode
+            hasQr: !!this.qrCode,
+            queueLength: this.messageQueue.length
         };
     }
 
@@ -124,7 +174,6 @@ class SessionManager {
     }
 
     async init() {
-        // Cargar sesiones existentes de la carpeta .wwebjs_auth
         if (!fs.existsSync(this.authPath)) {
             fs.mkdirSync(this.authPath, { recursive: true });
             return;
@@ -160,7 +209,6 @@ class SessionManager {
         if (client) {
             await client.logout();
             this.sessions.delete(sessionId);
-            // Opcional: eliminar carpeta de sesión físicamente
             const sessionPath = path.join(this.authPath, `session-${sessionId}`);
             if (fs.existsSync(sessionPath)) {
                 fs.rmSync(sessionPath, { recursive: true, force: true });
