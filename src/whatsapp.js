@@ -2,12 +2,15 @@ import pkg from 'whatsapp-web.js';
 const { Client, LocalAuth } = pkg;
 import qrcodeTerminal from 'qrcode-terminal';
 import qrcode from 'qrcode';
+import fs from 'fs';
+import path from 'path';
 
 class WhatsappClient {
-    constructor() {
+    constructor(sessionId) {
+        this.sessionId = sessionId;
         this.client = new Client({
             authStrategy: new LocalAuth({
-                clientId: 'whatsapp-bot',
+                clientId: sessionId,
                 dataPath: './.wwebjs_auth'
             }),
             puppeteer: {
@@ -35,41 +38,38 @@ class WhatsappClient {
         this.client.on('qr', (qr) => {
             this.qrCode = qr;
             this.isReady = false;
-            console.log('--- NUEVO CÓDIGO QR RECIBIDO ---');
+            console.log(`--- [${this.sessionId}] NUEVO CÓDIGO QR RECIBIDO ---`);
             qrcodeTerminal.generate(qr, { small: true });
-            console.log('Escanea el QR arriba o usa el endpoint /qr para conectarte.');
         });
 
         this.client.on('ready', () => {
             this.isReady = true;
             this.qrCode = null;
-            console.log('¡CLIENTE LISTO! El bot de WhatsApp está conectado.');
+            console.log(`¡[${this.sessionId}] CLIENTE LISTO!`);
         });
 
         this.client.on('authenticated', () => {
-            console.log('Sesión autenticada correctamente.');
+            console.log(`[${this.sessionId}] Sesión autenticada.`);
         });
 
         this.client.on('auth_failure', (msg) => {
-            console.error('ERROR DE AUTENTICACIÓN:', msg);
+            console.error(`[${this.sessionId}] ERROR DE AUTENTICACIÓN:`, msg);
             this.isReady = false;
-            console.log('Sugerencia: Si el error persiste, elimina la carpeta .wwebjs_auth y reinicia.');
         });
 
         this.client.on('disconnected', async (reason) => {
-            console.log('CLIENTE DESCONECTADO:', reason);
+            console.log(`[${this.sessionId}] CLIENTE DESCONECTADO:`, reason);
             this.isReady = false;
             this.qrCode = null;
             
-            // Intentar destruir y reiniciar el cliente para una reconexión limpia
             try {
                 await this.client.destroy();
-                console.log('Reiniciando cliente para reconexión...');
+                console.log(`[${this.sessionId}] Reiniciando cliente...`);
                 setTimeout(() => {
-                    this.client.initialize().catch(err => console.error('Error al reintentar inicialización:', err));
+                    this.client.initialize().catch(err => console.error(`[${this.sessionId}] Error al reiniciar:`, err));
                 }, 5000);
             } catch (err) {
-                console.error('Error al destruir cliente durante desconexión:', err);
+                console.error(`[${this.sessionId}] Error al destruir cliente:`, err);
             }
         });
     }
@@ -81,16 +81,14 @@ class WhatsappClient {
 
     async sendMessage(to, message) {
         if (!this.isReady) {
-            throw new Error('El cliente no está listo. Por favor, escanea el código QR.');
+            throw new Error('El cliente no está listo. Escanea el QR primero.');
         }
 
         try {
-            // Asegurarse de que el formato del número sea correcto (ej: 34600000000@c.us)
             const formattedNumber = to.includes('@c.us') ? to : `${to.replace(/\D/g, '')}@c.us`;
-            const response = await this.client.sendMessage(formattedNumber, message);
-            return response;
+            return await this.client.sendMessage(formattedNumber, message);
         } catch (error) {
-            console.error('Error al enviar mensaje:', error);
+            console.error(`[${this.sessionId}] Error al enviar mensaje:`, error);
             throw error;
         }
     }
@@ -101,10 +99,84 @@ class WhatsappClient {
 
     getStatus() {
         return {
+            sessionId: this.sessionId,
             isReady: this.isReady,
             hasQr: !!this.qrCode
         };
     }
+
+    async logout() {
+        try {
+            await this.client.logout();
+            await this.client.destroy();
+            return true;
+        } catch (error) {
+            console.error(`[${this.sessionId}] Error al cerrar sesión:`, error);
+            return false;
+        }
+    }
 }
 
-export const whatsapp = new WhatsappClient();
+class SessionManager {
+    constructor() {
+        this.sessions = new Map();
+        this.authPath = './.wwebjs_auth';
+    }
+
+    async init() {
+        // Cargar sesiones existentes de la carpeta .wwebjs_auth
+        if (!fs.existsSync(this.authPath)) {
+            fs.mkdirSync(this.authPath, { recursive: true });
+            return;
+        }
+
+        const dirs = fs.readdirSync(this.authPath);
+        for (const dir of dirs) {
+            if (dir.startsWith('session-')) {
+                const sessionId = dir.replace('session-', '');
+                console.log(`Restaurando sesión: ${sessionId}`);
+                await this.createSession(sessionId);
+            }
+        }
+    }
+
+    async createSession(sessionId) {
+        if (this.sessions.has(sessionId)) {
+            return this.sessions.get(sessionId);
+        }
+
+        const client = new WhatsappClient(sessionId);
+        this.sessions.set(sessionId, client);
+        client.initialize().catch(err => console.error(`Error inicializando ${sessionId}:`, err));
+        return client;
+    }
+
+    getSession(sessionId) {
+        return this.sessions.get(sessionId);
+    }
+
+    async deleteSession(sessionId) {
+        const client = this.sessions.get(sessionId);
+        if (client) {
+            await client.logout();
+            this.sessions.delete(sessionId);
+            // Opcional: eliminar carpeta de sesión físicamente
+            const sessionPath = path.join(this.authPath, `session-${sessionId}`);
+            if (fs.existsSync(sessionPath)) {
+                fs.rmSync(sessionPath, { recursive: true, force: true });
+            }
+            return true;
+        }
+        return false;
+    }
+
+    getAllStatuses() {
+        const statuses = [];
+        for (const client of this.sessions.values()) {
+            statuses.push(client.getStatus());
+        }
+        return statuses;
+    }
+}
+
+export const sessionManager = new SessionManager();

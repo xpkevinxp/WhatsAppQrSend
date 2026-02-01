@@ -1,20 +1,38 @@
 import express from 'express';
-import { whatsapp } from './whatsapp.js';
+import { sessionManager } from './whatsapp.js';
 
 const router = express.Router();
 
 /**
- * Endpoint para obtener el código QR en formato imagen (HTML)
+ * Endpoint para crear una nueva sesión
  */
-router.get('/qr', async (req, res) => {
-    const status = whatsapp.getStatus();
-    
-    if (status.isReady) {
-        return res.send('<h1>WhatsApp ya está conectado y listo.</h1>');
+router.get('/create-session/:sessionId', async (req, res) => {
+    const { sessionId } = req.params;
+    try {
+        await sessionManager.createSession(sessionId);
+        res.json({ success: true, message: `Sesión ${sessionId} inicializada.` });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * Endpoint para obtener el código QR de una sesión específica
+ */
+router.get('/qr/:sessionId', async (req, res) => {
+    const { sessionId } = req.params;
+    const session = sessionManager.getSession(sessionId);
+
+    if (!session) {
+        return res.status(404).send('<h1>Sesión no encontrada.</h1>');
     }
 
-    const qrImage = await whatsapp.getQrImage();
-    
+    const status = session.getStatus();
+    if (status.isReady) {
+        return res.send(`<h1>WhatsApp (${sessionId}) ya está conectado.</h1>`);
+    }
+
+    const qrImage = await session.getQrImage();
     if (!qrImage) {
         return res.send('<h1>Esperando el código QR... Refresca en unos segundos.</h1>');
     }
@@ -22,58 +40,59 @@ router.get('/qr', async (req, res) => {
     res.send(`
         <html>
             <body style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif;">
-                <h1>Escanea el QR para conectar tu WhatsApp</h1>
+                <h1>Escanea el QR para la sesión: ${sessionId}</h1>
                 <img src="${qrImage}" alt="QR Code" style="width: 300px; height: 300px; border: 1px solid #ccc; padding: 10px; border-radius: 10px;" />
-                <p>Este código expira pronto. Si no funciona, refresca la página.</p>
-                <script>
-                    // Refrescar cada 30 segundos si no está conectado
-                    setTimeout(() => location.reload(), 30000);
-                </script>
+                <script>setTimeout(() => location.reload(), 30000);</script>
             </body>
         </html>
     `);
 });
 
 /**
- * Endpoint para enviar mensajes
- * Body: { "to": "34600000000", "message": "Hola mundo" }
+ * Endpoint para enviar mensajes desde una sesión específica
  */
-router.post('/send-message', async (req, res) => {
+router.post('/send-message/:sessionId', async (req, res) => {
+    const { sessionId } = req.params;
     const { to, message } = req.body;
+    const session = sessionManager.getSession(sessionId);
+
+    if (!session) {
+        return res.status(404).json({ success: false, error: 'Sesión no encontrada.' });
+    }
 
     if (!to || !message) {
-        return res.status(400).json({ 
-            success: false, 
-            error: 'Faltan parámetros obligatorios: to y message.' 
-        });
+        return res.status(400).json({ success: false, error: 'Faltan parámetros: to y message.' });
     }
 
     try {
-        const response = await whatsapp.sendMessage(to, message);
+        const response = await session.sendMessage(to, message);
         res.json({ 
             success: true, 
-            message: 'Mensaje enviado correctamente.',
-            data: {
-                id: response.id.id,
-                to: response.to
-            }
+            message: 'Mensaje enviado.',
+            data: { id: response.id.id, sessionId }
         });
     } catch (error) {
-        res.status(500).json({ 
-            success: false, 
-            error: error.message 
-        });
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
 /**
- * Endpoint para consultar el estado del bot
+ * Listar todas las sesiones y sus estados
  */
-router.get('/status', (req, res) => {
+router.get('/sessions', (req, res) => {
     res.json({
         success: true,
-        status: whatsapp.getStatus()
+        sessions: sessionManager.getAllStatuses()
     });
+});
+
+/**
+ * Eliminar una sesión
+ */
+router.delete('/session/:sessionId', async (req, res) => {
+    const { sessionId } = req.params;
+    const deleted = await sessionManager.deleteSession(sessionId);
+    res.json({ success: deleted });
 });
 
 export default router;
