@@ -21,8 +21,7 @@ class WhatsappClient {
                     '--no-zygote',
                     '--disable-gpu'
                 ],
-                // En Linux a veces es necesario especificar la ruta del ejecutable de Chrome/Chromium
-                // executablePath: '/usr/bin/google-chrome-stable' 
+                executablePath: process.platform === 'linux' ? '/usr/bin/chromium-browser' : undefined
             }
         });
 
