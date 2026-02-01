@@ -1,0 +1,30 @@
+{
+  "name": "whatsapp-qr-bot",
+  "version": "1.0.0",
+  "description": "Bot de WhatsApp profesional con API para envío de mensajes",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "keywords": [
+    "whatsapp",
+    "bot",
+    "api",
+    "qrcode",
+    "nodejs"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "whatsapp-web.js": "^1.34.6",
+    "express": "^4.21.2",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}
